@@ -23,33 +23,37 @@ export const clockInOut = async (req, res) => {
 
         const now = new Date();
 
-        if(!existing){
-            const isLate = now.getHours() >= 9 && now.getMinutes() > 0;
+        if (!existing) {
+            const isLate = now.getHours() > 9 || (now.getHours() === 9 && now.getMinutes() > 0);
             const attendance = await Attendance.create({
                 employeeId: employee._id,
                 date: today,
                 checkIn: now,
-                status: isLate ? "LATE" : "PRESENT"
-            })
+                status: isLate ? "LATE" : "PRESENT",
+            });
 
-            await inngest.send({
-                name: "employee/check-out",
-                data: {
-                    employeeId: employee._id,
-                    attendanceId: attendance._id,
-                }
-            })
+            try {
+                await inngest.send({
+                    name: "employee/check-out",
+                    data: {
+                        employeeId: employee._id,
+                        attendanceId: attendance._id,
+                    },
+                });
+            } catch (error) {
+                console.warn("Inngest unavailable. Attendance saved without automation.");
+            }
 
             return res.json({ success: true, type: "CHECK_IN", data: attendance });
-        } else if(!existing.checkOut){
-            const checkInTime = new Date(existing.checkIn).getTime()
+        } else if (!existing.checkOut) {
+            const checkInTime = new Date(existing.checkIn).getTime();
             const diffMs = now.getTime() - checkInTime;
-            const diffHours = diffMs / (1000 * 60 * 60)
+            const diffHours = diffMs / (1000 * 60 * 60);
 
             existing.checkOut = now;
 
             // Compute working hours and day type
-            const workingHours = parseFloat(diffHours.toFixed(2))
+            const workingHours = parseFloat(diffHours.toFixed(2));
             let dayType = "Half Day";
             if (workingHours >= 8) dayType = "Full Day";
             else if (workingHours >= 6) dayType = "Three Quarter Day";
@@ -61,7 +65,7 @@ export const clockInOut = async (req, res) => {
 
             await existing.save();
             return res.json({ success: true, type: "CHECK_OUT", data: existing });
-        }else {
+        } else {
             return res.json({ success: true, type: "CHECK_OUT", data: existing });
         }
 
